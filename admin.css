@@ -1,0 +1,182 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Nunito", sans-serif;
+  background: #f8eef2;
+  color: #53252f;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #e7c5ce;
+  background: #fff8fb;
+}
+
+.admin-header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.admin-header p {
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+}
+
+.admin-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-login-shell {
+  min-height: 100vh;
+  place-items: center;
+}
+
+.admin-card {
+  background: #fff;
+  border: 1px solid #f1d8df;
+  border-radius: 14px;
+  padding: 1rem;
+  box-shadow: 0 10px 24px rgba(83, 37, 47, 0.08);
+}
+
+.admin-login-card {
+  width: min(420px, 100%);
+}
+
+.admin-card h2 {
+  margin-top: 0;
+}
+
+.admin-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.admin-form label {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.admin-form input,
+.admin-form select,
+.admin-form textarea,
+.admin-form button {
+  font: inherit;
+}
+
+.admin-form input,
+.admin-form select,
+.admin-form textarea {
+  width: 100%;
+  border: 1px solid #e5c8d1;
+  border-radius: 10px;
+  padding: 0.62rem 0.7rem;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox-field input {
+  width: auto;
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  background: #d15d79;
+  color: #fff;
+  font-weight: 700;
+  padding: 0.62rem 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #ecd5dc;
+  color: #53252f;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+
+.form-message {
+  min-height: 1.2rem;
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+}
+
+.form-error {
+  color: #a62643;
+}
+
+.form-success {
+  color: #1f7a37;
+}
+
+.hint-text {
+  color: #7f5863;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.product-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.product-table th,
+.product-table td {
+  text-align: left;
+  border-bottom: 1px solid #f1d8df;
+  padding: 0.65rem 0.5rem;
+  vertical-align: top;
+}
+
+.product-table th {
+  font-size: 0.9rem;
+}
+
+.product-thumb {
+  width: 68px;
+  height: 68px;
+  border-radius: 8px;
+  object-fit: cover;
+  display: block;
+  background: #f3d8df;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+@media (max-width: 720px) {
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

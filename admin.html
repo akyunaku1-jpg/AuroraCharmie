@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurora Charmie | Admin Dashboard</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+  <body data-admin-page="dashboard">
+    <header class="admin-header">
+      <div>
+        <h1>Product Management</h1>
+        <p>Manage bracelet catalog without opening Supabase manually.</p>
+      </div>
+      <button id="adminLogoutBtn" class="btn-secondary" type="button">Logout</button>
+    </header>
+
+    <main class="admin-shell">
+      <section class="admin-card">
+        <h2 id="productFormTitle">Add Product</h2>
+        <form id="productForm" class="admin-form" enctype="multipart/form-data">
+          <input id="productId" type="hidden" />
+          <input id="existingImagePath" type="hidden" />
+
+          <label for="productName">Product name</label>
+          <input id="productName" type="text" required />
+
+          <label for="productPrice">Price</label>
+          <input id="productPrice" type="text" required placeholder="Rp 35.000" />
+
+          <label for="productCategory">Category</label>
+          <select id="productCategory" required>
+            <option value="Cherry">Cherry</option>
+            <option value="Flower">Flower</option>
+            <option value="Heart">Heart</option>
+            <option value="Mix">Mix</option>
+            <option value="Pastel">Pastel</option>
+          </select>
+
+          <label for="productDescription">Description</label>
+          <textarea id="productDescription" rows="4" required></textarea>
+
+          <label for="productColor">Color (placeholder fallback)</label>
+          <input id="productColor" type="text" value="#F4A7A7" />
+
+          <label class="checkbox-field" for="productIsNew">
+            <input id="productIsNew" type="checkbox" />
+            Is New
+          </label>
+
+          <label for="productImage">Product image (jpg/png/webp)</label>
+          <input id="productImage" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
+          <small class="hint-text">Upload optional when editing. Keep empty to use current image.</small>
+
+          <div class="form-actions">
+            <button id="saveProductBtn" type="submit">Save Product</button>
+            <button id="cancelEditBtn" class="btn-secondary" type="button">Cancel Edit</button>
+          </div>
+
+          <p id="productFormMessage" class="form-message" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="admin-card">
+        <h2>Product List</h2>
+        <div class="table-wrap">
+          <table class="product-table">
+            <thead>
+              <tr>
+                <th>Image</th>
+                <th>Name</th>
+                <th>Price</th>
+                <th>Category</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="productTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="admin.js"></script>
+  </body>
+</html>

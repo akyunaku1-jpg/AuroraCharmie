@@ -8,10 +8,10 @@ create table if not exists public.products (
   name text not null,
   price text not null,
   category text not null,
-  "desc" text not null default '',
+  description text not null default '',
   is_new boolean not null default false,
   color text not null default '#F4A7A7',
-  image text not null default '',
+  image_path text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -23,15 +23,15 @@ begin
     from information_schema.columns
     where table_schema = 'public'
       and table_name = 'products'
-      and column_name = 'images'
+      and column_name = 'desc'
   ) and not exists (
     select 1
     from information_schema.columns
     where table_schema = 'public'
       and table_name = 'products'
-      and column_name = 'image'
+      and column_name = 'description'
   ) then
-    execute 'alter table public.products rename column images to image';
+    execute 'alter table public.products rename column "desc" to description';
   end if;
 
   if not exists (
@@ -39,9 +39,51 @@ begin
     from information_schema.columns
     where table_schema = 'public'
       and table_name = 'products'
-      and column_name = 'image'
+      and column_name = 'description'
   ) then
-    execute 'alter table public.products add column image text not null default ''''''';
+    execute 'alter table public.products add column description text not null default ''''''';
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'products'
+      and column_name = 'image'
+  ) and not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'products'
+      and column_name = 'image_path'
+  ) then
+    execute 'alter table public.products rename column image to image_path';
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'products'
+      and column_name = 'images'
+  ) and not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'products'
+      and column_name = 'image_path'
+  ) then
+    execute 'alter table public.products rename column images to image_path';
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'products'
+      and column_name = 'image_path'
+  ) then
+    execute 'alter table public.products add column image_path text not null default ''''''';
   end if;
 
   if not exists (

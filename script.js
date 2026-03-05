@@ -63,6 +63,7 @@ const localProducts = [
 
 const WA_NUMBER = "6281234567890";
 const FALLBACK_TEXT_COLOR = "#8b3c44";
+const PRODUCTS_TABLE = "products";
 
 const productGrid = document.getElementById("productGrid");
 const filterGroup = document.getElementById("filterGroup");
@@ -88,39 +89,79 @@ let products = [...localProducts];
 let currentFilter = "All";
 let currentSearch = "";
 let isProductGridLoading = false;
+let supabaseClientPromise = null;
 
 const CARD_SWITCH_DURATION_MS = 300;
 const MIN_SKELETON_CARDS = 4;
 
 function normalizeProduct(product) {
+  const description = product?.description || product?.desc || "";
+  const imagePath = product?.image_path || product?.image || product?.images || "";
+
   return {
+    id: product?.id || null,
     name: product?.name || "Unnamed Product",
     price: product?.price || "Rp 0",
     category: product?.category || "Misc",
-    desc: product?.desc || "",
-    isNew: Boolean(product?.isNew),
+    desc: description,
+    isNew: Boolean(product?.is_new ?? product?.isNew),
     color: product?.color || "#F4A7A7",
-    image: product?.image || ""
+    image: imagePath
   };
+}
+
+async function getSupabaseClient() {
+  if (supabaseClientPromise) {
+    return supabaseClientPromise;
+  }
+
+  supabaseClientPromise = (async () => {
+    if (!window.supabase || typeof window.supabase.createClient !== "function") {
+      throw new Error("Supabase client library is missing.");
+    }
+
+    const response = await fetch("/api/config", { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      throw new Error("Failed to read runtime config.");
+    }
+
+    const config = await response.json();
+    if (!config?.supabaseUrl || !config?.supabaseAnonKey) {
+      throw new Error("Supabase runtime config is incomplete.");
+    }
+
+    return window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+  })();
+
+  return supabaseClientPromise;
 }
 
 async function loadProducts() {
   try {
-    const response = await fetch("/api/products", {
-      headers: { Accept: "application/json" }
-    });
+    const supabase = await getSupabaseClient();
 
-    if (!response.ok) {
-      throw new Error("Failed to load product data.");
+    let data = [];
+    const primaryResult = await supabase
+      .from(PRODUCTS_TABLE)
+      .select("id,name,price,category,description,is_new,color,image_path,created_at")
+      .order("created_at", { ascending: false });
+
+    if (!primaryResult.error) {
+      data = primaryResult.data || [];
+    } else {
+      const fallbackResult = await supabase
+        .from(PRODUCTS_TABLE)
+        .select("id,name,price,category,desc,is_new,color,image,images,created_at")
+        .order("created_at", { ascending: false });
+
+      if (fallbackResult.error) {
+        throw fallbackResult.error;
+      }
+
+      data = fallbackResult.data || [];
     }
 
-    const payload = await response.json();
-    if (!Array.isArray(payload.products) || payload.products.length === 0) {
-      products = [...localProducts];
-      return;
-    }
-
-    products = payload.products.map(normalizeProduct);
+    products = Array.isArray(data) ? data.map(normalizeProduct) : [];
   } catch (error) {
     products = [...localProducts];
   }

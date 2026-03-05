@@ -1,7 +1,7 @@
 -- Aurora Charmie seed data
 -- Run after schema.sql
 
-insert into public.products (name, price, category, "desc", is_new, color, image)
+insert into public.products (name, price, category, description, is_new, color, image_path)
 values
   (
     'Cherry Bloom',
