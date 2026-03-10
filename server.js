@@ -32,6 +32,8 @@ const STATIC_ROUTES = {
   "/admin.html": "admin.html",
   "/admin-login": "admin-login.html",
   "/admin-login.html": "admin-login.html",
+  "/admin-register": "admin-register.html",
+  "/admin-dashboard": "admin-dashboard.html",
   "/admin.js": "admin.js",
   "/admin.css": "admin.css"
 };
@@ -62,9 +64,9 @@ function loadEnvFromFile(fileName) {
   });
 }
 
-loadEnvFromFile(".env");
 loadEnvFromFile(".env.local");
-const PORT = Number(process.env.PORT || 3000);
+loadEnvFromFile(".env");
+const PORT = Number(process.env.PORT || 3005);
 
 fs.mkdirSync(PRODUCT_IMAGES_DIR, { recursive: true });
 
@@ -290,6 +292,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   const hasSupabaseEnv = Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY);
   const source = hasSupabaseEnv ? "Supabase config loaded" : "missing Supabase config";
-  console.log(`Aurora Charmie is running at http://localhost:${PORT}`);
+  console.log(`Server is running at http://localhost:${PORT}`);
   console.log(`Runtime config: ${source}`);
 });

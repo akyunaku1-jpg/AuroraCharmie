@@ -165,7 +165,7 @@ async function loadProducts() {
     let data = [];
     const primaryResult = await supabase
       .from(PRODUCTS_TABLE)
-      .select("id,name,price,category,description,is_new,color,image_path,created_at")
+      .select("name,price,category,description,is_new,color,image_path,created_at")
       .order("created_at", { ascending: false });
 
     if (!primaryResult.error) {
@@ -173,7 +173,7 @@ async function loadProducts() {
     } else {
       const fallbackResult = await supabase
         .from(PRODUCTS_TABLE)
-        .select("id,name,price,category,desc,is_new,color,image,images,created_at")
+        .select("name,price,category,desc,is_new,color,image,images,created_at")
         .order("created_at", { ascending: false });
 
       if (fallbackResult.error) {

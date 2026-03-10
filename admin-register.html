@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Aurora Charmie | Admin Login</title>
+    <title>Aurora Charmie | Admin Register</title>
     <meta name="robots" content="noindex,nofollow" />
     <link rel="stylesheet" href="/admin.css" />
   </head>
@@ -20,26 +20,37 @@
       </header>
 
       <section class="auth-card">
+        <h2>Buat Akun Admin</h2>
         <div class="input-wrap">
           <span class="input-icon">✉️</span>
-          <input id="emailInput" type="email" placeholder="Email" autocomplete="email" />
+          <input id="regEmailInput" type="email" placeholder="Email" autocomplete="email" />
         </div>
         <div class="input-wrap">
           <span class="input-icon">🔒</span>
-          <input id="passwordInput" type="password" placeholder="Password" autocomplete="current-password" />
+          <input id="regPasswordInput" type="password" placeholder="Password" autocomplete="new-password" />
         </div>
-        <button id="loginBtn" class="btn" type="button">✨🍒 Login</button>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span>
+          <input
+            id="regConfirmPasswordInput"
+            type="password"
+            placeholder="Konfirmasi Password"
+            autocomplete="new-password"
+          />
+        </div>
+        <button id="registerBtn" class="btn" type="button">Daftar</button>
         <div id="errorBox" class="error-box"></div>
+        <div id="successBox" class="success-box"></div>
       </section>
 
-      <p class="auth-footer">✨ <a href="/admin-register">Tambah akun baru</a> 🌙</p>
+      <p class="auth-footer">✨ <a href="/admin-login">Sudah punya akun? Login</a> 🌙</p>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="/admin.js"></script>
     <script>
       window.addEventListener("DOMContentLoaded", () => {
-        initLoginPage();
+        initRegisterPage();
       });
     </script>
   </body>

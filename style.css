@@ -979,6 +979,21 @@ textarea {
   opacity: 0.95;
 }
 
+.footer-ghost-link {
+  display: inline-block;
+  margin-top: 10px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  letter-spacing: 0.08em;
+  opacity: 1;
+  transition: color 0.2s;
+}
+.footer-ghost-link:hover {
+  color: #F4A7A7;
+}
+
 .loading-screen {
   position: fixed;
   inset: 0;

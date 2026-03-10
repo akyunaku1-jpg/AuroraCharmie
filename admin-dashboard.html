@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurora Charmie | Admin Dashboard</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+  <body class="dashboard-page">
+    <span class="deco top-left">🌸</span>
+    <span class="deco top-right">✨</span>
+    <span class="deco bottom-left">🍒</span>
+    <span class="deco bottom-right">🌙</span>
+
+    <main class="dashboard-shell">
+      <section class="dashboard-container">
+        <header class="dashboard-header">
+          <div class="brand-left">
+            <h2>🌸 Aurora Charmie</h2>
+            <p>Admin</p>
+          </div>
+          <div class="header-center">
+            <h1>Admin Panel</h1>
+            <p>Kelola Produk</p>
+          </div>
+          <div class="header-right">
+            <button id="logoutBtn" class="logout-btn" type="button" aria-label="Logout">⏻</button>
+          </div>
+        </header>
+
+        <hr class="divider" />
+
+        <section class="feature-wrap">
+          <div class="feature-cards">
+            <article class="feature-card">
+              <div class="feature-emoji">☁️↑</div>
+              <h3>Tambah Produk</h3>
+              <p>Upload & tambahkan produk baru</p>
+              <button type="button" onclick="document.getElementById('addSection').scrollIntoView({ behavior: 'smooth' })">
+                Buka
+              </button>
+            </article>
+            <article class="feature-card">
+              <div class="feature-emoji">📝✏️</div>
+              <h3>Edit Produk</h3>
+              <p>Edit atau perbarui info produk</p>
+              <button
+                type="button"
+                onclick="document.getElementById('productListSection').scrollIntoView({ behavior: 'smooth' })"
+              >
+                Buka
+              </button>
+            </article>
+            <article class="feature-card">
+              <div class="feature-emoji">🗑️❤️</div>
+              <h3>Hapus Produk</h3>
+              <p>Hapus produk dengan mudah</p>
+              <button
+                type="button"
+                onclick="document.getElementById('productListSection').scrollIntoView({ behavior: 'smooth' })"
+              >
+                Buka
+              </button>
+            </article>
+          </div>
+          <div class="cards-deco">🌸 ✦ ✨ 🌙</div>
+        </section>
+
+        <section id="productListSection" class="section-card">
+          <h3 class="section-title">Daftar Produk 🍒</h3>
+          <div id="productGrid" class="product-grid"></div>
+        </section>
+
+        <section id="addSection" class="section-card">
+          <h3 class="section-title">Tambah Produk +</h3>
+          <div class="form-grid">
+            <input id="prodName" class="plain-input" type="text" placeholder="Nama Produk" />
+            <input id="prodPrice" class="plain-input" type="text" placeholder="Harga (contoh: Rp 35.000)" />
+            <textarea id="prodDesc" placeholder="Deskripsi Produk"></textarea>
+            <input id="prodImage" class="plain-input" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
+            <button id="addProductBtn" class="btn" type="button">Tambah Produk</button>
+            <div id="addErrorBox" class="error-box"></div>
+            <div id="addSuccessBox" class="success-box"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div id="editModal" class="modal-overlay">
+      <div class="modal-card">
+        <h3>Edit Produk</h3>
+        <input id="editProductId" type="hidden" />
+        <input id="editExistingImage" type="hidden" />
+        <div class="form-grid">
+          <input id="editName" class="plain-input" type="text" placeholder="Nama Produk" />
+          <input id="editPrice" class="plain-input" type="text" placeholder="Harga" />
+          <textarea id="editDesc" placeholder="Deskripsi Produk"></textarea>
+          <input id="editImage" class="plain-input" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" />
+          <div id="editErrorBox" class="error-box"></div>
+          <div class="modal-actions">
+            <button id="saveEditBtn" class="save-btn" type="button">Simpan</button>
+            <button id="cancelEditBtn" class="cancel-btn" type="button">Batal</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="deleteModal" class="modal-overlay">
+      <div class="modal-card">
+        <h3>🗑️ Hapus Produk</h3>
+        <p>Yakin ingin menghapus produk ini?</p>
+        <p><strong id="deleteProductName"></strong></p>
+        <div class="modal-actions">
+          <button id="confirmDeleteBtn" class="save-btn" type="button">Ya, Hapus</button>
+          <button id="cancelDeleteBtn" class="cancel-btn" type="button">Batal</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/admin.js"></script>
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        initDashboardPage();
+      });
+    </script>
+  </body>
+</html>
