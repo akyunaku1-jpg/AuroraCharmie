@@ -1,7 +1,67 @@
 const PRODUCTS_TABLE = "products";
+const LOCAL_PRODUCTS_KEY = "aurora_products";
 
 let supabaseClient = null;
 let pendingDeleteId = null;
+let runtimeConfig = null;
+
+function readLocalProducts() {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PRODUCTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function writeLocalProducts(products) {
+  try {
+    window.localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(products));
+  } catch (error) {
+    // Ignore localStorage quota/access errors.
+  }
+}
+
+function mergeProductsWithLocalImages(products) {
+  const localProducts = readLocalProducts();
+  const imageByName = new Map(
+    localProducts
+      .filter((item) => item && typeof item.name === "string" && String(item.image || "").startsWith("data:"))
+      .map((item) => [item.name, item.image])
+  );
+
+  return products.map((item) => ({
+    ...item,
+    image: imageByName.get(item.name) || item.image || ""
+  }));
+}
+
+function upsertLocalProduct(product, previousName = product.name) {
+  const current = readLocalProducts();
+  const index = current.findIndex((item) => String(item.name) === String(previousName));
+  if (index >= 0) {
+    current[index] = product;
+  } else {
+    current.unshift(product);
+  }
+  writeLocalProducts(current);
+}
+
+function removeLocalProduct(productName) {
+  const current = readLocalProducts();
+  const next = current.filter((item) => String(item.name) !== String(productName));
+  writeLocalProducts(next);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("Gagal membaca file gambar."));
+    reader.readAsDataURL(file);
+  });
+}
 
 function showBox(element, message) {
   if (!element) return;
@@ -39,6 +99,7 @@ async function getSupabase() {
     throw new Error("Supabase credentials are missing.");
   }
 
+  runtimeConfig = config;
   supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
   return supabaseClient;
 }
@@ -201,12 +262,15 @@ async function loadProducts() {
 
     if (error) throw error;
 
-    if (!data || data.length === 0) {
+    const mergedData = mergeProductsWithLocalImages(data || []);
+    writeLocalProducts(mergedData);
+
+    if (!mergedData || mergedData.length === 0) {
       grid.innerHTML = `<div class="product-item"><p>Belum ada produk</p></div>`;
       return;
     }
 
-    grid.innerHTML = data
+    grid.innerHTML = mergedData
       .map((product) => {
         const imagePath = product.image || "";
         return `
@@ -226,40 +290,70 @@ async function loadProducts() {
 
     grid.querySelectorAll("[data-action='edit']").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const product = data.find((item) => String(item.name) === String(btn.dataset.id));
+        const product = mergedData.find((item) => String(item.name) === String(btn.dataset.id));
         if (product) openEditModal(product);
       });
     });
 
     grid.querySelectorAll("[data-action='delete']").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const product = data.find((item) => String(item.name) === String(btn.dataset.id));
+        const product = mergedData.find((item) => String(item.name) === String(btn.dataset.id));
         if (product) openDeleteModal(product.name, product.name || "-");
       });
     });
   } catch (error) {
-    showToast(error.message || "Failed to load products.", "error");
+    const localData = readLocalProducts();
+    if (localData.length > 0) {
+      grid.innerHTML = localData
+        .map((product) => {
+          const imagePath = product.image || "";
+          return `
+          <article class="product-item">
+            <img src="${escapeHtml(imagePath)}" alt="${escapeHtml(product.name || "Product")}" />
+            <h4>${escapeHtml(product.name || "-")}</h4>
+            <p><strong>${escapeHtml(product.price || "-")}</strong></p>
+            <p>${escapeHtml(product.desc || "-")}</p>
+            <div class="product-actions">
+              <button class="edit-btn" type="button" data-action="edit" data-id="${escapeHtml(product.name)}">Edit</button>
+              <button class="delete-btn" type="button" data-action="delete" data-id="${escapeHtml(product.name)}">Hapus</button>
+            </div>
+          </article>
+        `;
+        })
+        .join("");
+    } else {
+      showToast(error.message || "Failed to load products.", "error");
+    }
   }
 }
 
 async function uploadImage(file) {
-  const formData = new FormData();
-  formData.append("image", file);
+  const supabase = await getSupabase();
+  const bucketName = runtimeConfig?.supabaseStorageBucket || "product-images";
+  const safeName = (file?.name || "image")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const objectPath = `products/${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName || "image"}`;
 
-  const response = await fetch("/upload-image", {
-    method: "POST",
-    body: formData
+  const { error: uploadError } = await supabase.storage.from(bucketName).upload(objectPath, file, {
+    cacheControl: "3600",
+    upsert: false,
+    contentType: file.type || undefined
   });
 
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(result.message || "Upload gambar gagal.");
-  }
-  if (!result.path) {
-    throw new Error("Response upload tidak memiliki path.");
+  if (uploadError) {
+    throw new Error(uploadError.message || "Upload gambar gagal.");
   }
 
-  return result.path;
+  const { data } = supabase.storage.from(bucketName).getPublicUrl(objectPath);
+  const publicUrl = data?.publicUrl || "";
+  if (!publicUrl) {
+    throw new Error("Response upload tidak memiliki URL publik.");
+  }
+
+  return publicUrl;
 }
 
 async function handleAddProduct() {
@@ -285,9 +379,15 @@ async function handleAddProduct() {
     }
 
     let image = "";
+    let localImage = "";
     const file = imageInput.files?.[0];
     if (file) {
-      image = await uploadImage(file);
+      localImage = await fileToDataUrl(file);
+      try {
+        image = await uploadImage(file);
+      } catch (error) {
+        image = localImage;
+      }
     }
 
     const supabase = await getSupabase();
@@ -298,6 +398,20 @@ async function handleAddProduct() {
       image
     });
     if (error) throw error;
+
+    upsertLocalProduct(
+      {
+        name,
+        price,
+        category: "Misc",
+        desc,
+        is_new: false,
+        color: "#F4A7A7",
+        image: localImage || image,
+        created_at: new Date().toISOString()
+      },
+      name
+    );
 
     nameInput.value = "";
     priceInput.value = "";
@@ -348,9 +462,15 @@ async function handleSaveEdit() {
     }
 
     let image = existingImage;
+    let localImage = "";
     const file = imageInput.files?.[0];
     if (file) {
-      image = await uploadImage(file);
+      localImage = await fileToDataUrl(file);
+      try {
+        image = await uploadImage(file);
+      } catch (error) {
+        image = localImage;
+      }
     }
 
     const supabase = await getSupabase();
@@ -364,6 +484,20 @@ async function handleSaveEdit() {
       })
       .eq("name", id);
     if (error) throw error;
+
+    upsertLocalProduct(
+      {
+        name,
+        price,
+        category: "Misc",
+        desc,
+        is_new: false,
+        color: "#F4A7A7",
+        image: localImage || image || existingImage,
+        created_at: new Date().toISOString()
+      },
+      id
+    );
 
     closeModal("editModal");
     showToast("Produk berhasil diperbarui.", "success");
@@ -392,6 +526,7 @@ async function handleConfirmDelete() {
     const supabase = await getSupabase();
     const { error } = await supabase.from(PRODUCTS_TABLE).delete().eq("name", pendingDeleteId);
     if (error) throw error;
+    removeLocalProduct(pendingDeleteId);
 
     closeModal("deleteModal");
     showToast("Produk berhasil dihapus.", "success");

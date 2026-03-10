@@ -65,6 +65,7 @@ const WA_NUMBER = "6281234567890";
 const FALLBACK_TEXT_COLOR = "#8b3c44";
 const PRODUCTS_TABLE = "products";
 const BADGE_OPTIONS = ["NEW", "SALE", "HOT", "LIMITED"];
+const LOCAL_PRODUCTS_KEY = "aurora_products";
 
 const productGrid = document.getElementById("productGrid");
 const filterGroup = document.getElementById("filterGroup");
@@ -132,6 +133,16 @@ function normalizeProduct(product) {
   };
 }
 
+function readLocalProducts() {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PRODUCTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+}
+
 async function getSupabaseClient() {
   if (supabaseClientPromise) {
     return supabaseClientPromise;
@@ -159,6 +170,12 @@ async function getSupabaseClient() {
 }
 
 async function loadProducts() {
+  const localProductsData = readLocalProducts();
+  if (localProductsData.length > 0) {
+    products = localProductsData.map(normalizeProduct);
+    return;
+  }
+
   try {
     const supabase = await getSupabaseClient();
 
