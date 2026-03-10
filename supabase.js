@@ -1,52 +1,5 @@
-const SUPABASE_URL = "YOUR_SUPABASE_URL";
-const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
-const SUPABASE_STORAGE_BUCKET = "product-images";
+const SUPABASE_URL = "https://ytdzvybgvxbbxttpgaho.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0ZHp2eWJndnhiYnh0dHBnYWhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0OTE5NTAsImV4cCI6MjA4ODA2Nzk1MH0.xoQjf8CIGHEmFlKrfhsjulrfRS7U2wrjTDXFpooYTvc";
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let __supabaseClient = null;
-let __runtimeConfig = null;
-
-async function getSupabaseClient() {
-  if (__supabaseClient) {
-    return __supabaseClient;
-  }
-
-  if (!window.supabase || typeof window.supabase.createClient !== "function") {
-    throw new Error("Supabase client library is not loaded.");
-  }
-
-  try {
-    const response = await fetch("/api/config", {
-      headers: { Accept: "application/json" }
-    });
-
-    if (response.ok) {
-      const config = await response.json();
-      if (config?.supabaseUrl && config?.supabaseAnonKey) {
-        __runtimeConfig = config;
-        __supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-        return __supabaseClient;
-      }
-    }
-  } catch (error) {
-    // Fallback to constants below.
-  }
-
-  if (
-    !SUPABASE_URL ||
-    !SUPABASE_KEY ||
-    SUPABASE_URL === "YOUR_SUPABASE_URL" ||
-    SUPABASE_KEY === "YOUR_SUPABASE_ANON_KEY"
-  ) {
-    throw new Error("Supabase runtime config is missing.");
-  }
-
-  __supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  return __supabaseClient;
-}
-
-function getSupabaseBucket() {
-  return __runtimeConfig?.supabaseStorageBucket || SUPABASE_STORAGE_BUCKET;
-}
-
-window.getSupabaseClient = getSupabaseClient;
-window.getSupabaseBucket = getSupabaseBucket;
+window.supabaseClient = supabaseClient;

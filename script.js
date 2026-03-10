@@ -91,7 +91,6 @@ let products = [...localProducts];
 let currentFilter = "All";
 let currentSearch = "";
 let isProductGridLoading = false;
-let supabaseClientPromise = null;
 let productsRealtimeChannel = null;
 
 function parseBadgeFromDescription(rawDescription) {
@@ -152,29 +151,10 @@ function writeLocalProducts(items) {
 }
 
 async function getSupabaseClient() {
-  if (supabaseClientPromise) {
-    return supabaseClientPromise;
+  if (!window.supabaseClient) {
+    throw new Error("Supabase client is missing.");
   }
-
-  supabaseClientPromise = (async () => {
-    if (typeof window.getSupabaseClient !== "function") {
-      if (!window.supabase || typeof window.supabase.createClient !== "function") {
-        throw new Error("Supabase client library is missing.");
-      }
-      const response = await fetch("/api/config", { headers: { Accept: "application/json" } });
-      if (!response.ok) {
-        throw new Error("Failed to read runtime config.");
-      }
-      const config = await response.json();
-      if (!config?.supabaseUrl || !config?.supabaseAnonKey) {
-        throw new Error("Supabase runtime config is incomplete.");
-      }
-      return window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-    }
-    return window.getSupabaseClient();
-  })();
-
-  return supabaseClientPromise;
+  return window.supabaseClient;
 }
 
 async function loadProducts() {
