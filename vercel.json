@@ -5,11 +5,13 @@
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
     { "source": "/index", "destination": "/index.html" },
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/admin-dashboard", "destination": "/admin-dashboard.html" },
+    { "source": "/admin-login", "destination": "/admin-login.html" },
+    { "source": "/admin-register", "destination": "/admin-register.html" },
     { "source": "/catalog", "destination": "/catalog.html" },
     { "source": "/info", "destination": "/info.html" },
     { "source": "/order", "destination": "/order.html" },
-    { "source": "/admin", "destination": "/admin.html" },
-    { "source": "/admin-login", "destination": "/admin-login.html" },
     { "source": "/upload-image", "destination": "/api/upload-image" }
   ]
 }

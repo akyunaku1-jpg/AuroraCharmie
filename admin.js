@@ -3,7 +3,6 @@ const LOCAL_PRODUCTS_KEY = "aurora_products";
 
 let supabaseClient = null;
 let pendingDeleteId = null;
-let runtimeConfig = null;
 
 function readLocalProducts() {
   try {
@@ -23,23 +22,9 @@ function writeLocalProducts(products) {
   }
 }
 
-function mergeProductsWithLocalImages(products) {
-  const localProducts = readLocalProducts();
-  const imageByName = new Map(
-    localProducts
-      .filter((item) => item && typeof item.name === "string" && String(item.image || "").startsWith("data:"))
-      .map((item) => [item.name, item.image])
-  );
-
-  return products.map((item) => ({
-    ...item,
-    image: imageByName.get(item.name) || item.image || ""
-  }));
-}
-
-function upsertLocalProduct(product, previousName = product.name) {
+function upsertLocalProduct(product, previousId = product.id) {
   const current = readLocalProducts();
-  const index = current.findIndex((item) => String(item.name) === String(previousName));
+  const index = current.findIndex((item) => String(item.id) === String(previousId));
   if (index >= 0) {
     current[index] = product;
   } else {
@@ -48,9 +33,9 @@ function upsertLocalProduct(product, previousName = product.name) {
   writeLocalProducts(current);
 }
 
-function removeLocalProduct(productName) {
+function removeLocalProduct(productId) {
   const current = readLocalProducts();
-  const next = current.filter((item) => String(item.name) !== String(productName));
+  const next = current.filter((item) => String(item.id) !== String(productId));
   writeLocalProducts(next);
 }
 
@@ -82,25 +67,10 @@ async function getSupabase() {
   if (supabaseClient) {
     return supabaseClient;
   }
-
-  if (!window.supabase || typeof window.supabase.createClient !== "function") {
-    throw new Error("Supabase client library is not loaded.");
+  if (typeof window.getSupabaseClient !== "function") {
+    throw new Error("Shared Supabase client is not available.");
   }
-
-  const response = await fetch("/api/config", {
-    headers: { Accept: "application/json" }
-  });
-  if (!response.ok) {
-    throw new Error("Failed to load runtime config.");
-  }
-
-  const config = await response.json();
-  if (!config.supabaseUrl || !config.supabaseAnonKey) {
-    throw new Error("Supabase credentials are missing.");
-  }
-
-  runtimeConfig = config;
-  supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+  supabaseClient = await window.getSupabaseClient();
   return supabaseClient;
 }
 
@@ -257,20 +227,31 @@ async function loadProducts() {
     const supabase = await getSupabase();
     const { data, error } = await supabase
       .from(PRODUCTS_TABLE)
-      .select("name, price, category, desc, is_new, color, image, created_at")
+      .select("id, name, price, category, description, is_new, image, created_at")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
 
-    const mergedData = mergeProductsWithLocalImages(data || []);
-    writeLocalProducts(mergedData);
+    const freshData = (data || []).map((item) => ({
+      id: item.id || "",
+      name: item.name || "",
+      price: item.price || "",
+      category: item.category || "Misc",
+      desc: item.description || "",
+      is_new: Boolean(item.is_new),
+      color: "#F4A7A7",
+      image: item.image || "",
+      created_at: item.created_at || ""
+    }));
 
-    if (!mergedData || mergedData.length === 0) {
+    writeLocalProducts(freshData);
+
+    if (!freshData || freshData.length === 0) {
       grid.innerHTML = `<div class="product-item"><p>Belum ada produk</p></div>`;
       return;
     }
 
-    grid.innerHTML = mergedData
+    grid.innerHTML = freshData
       .map((product) => {
         const imagePath = product.image || "";
         return `
@@ -280,8 +261,8 @@ async function loadProducts() {
             <p><strong>${escapeHtml(product.price || "-")}</strong></p>
             <p>${escapeHtml(product.desc || "-")}</p>
             <div class="product-actions">
-              <button class="edit-btn" type="button" data-action="edit" data-id="${escapeHtml(product.name)}">Edit</button>
-              <button class="delete-btn" type="button" data-action="delete" data-id="${escapeHtml(product.name)}">Hapus</button>
+              <button class="edit-btn" type="button" data-action="edit" data-id="${escapeHtml(product.id)}">Edit</button>
+              <button class="delete-btn" type="button" data-action="delete" data-id="${escapeHtml(product.id)}">Hapus</button>
             </div>
           </article>
         `;
@@ -290,15 +271,15 @@ async function loadProducts() {
 
     grid.querySelectorAll("[data-action='edit']").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const product = mergedData.find((item) => String(item.name) === String(btn.dataset.id));
+        const product = freshData.find((item) => String(item.id) === String(btn.dataset.id));
         if (product) openEditModal(product);
       });
     });
 
     grid.querySelectorAll("[data-action='delete']").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const product = mergedData.find((item) => String(item.name) === String(btn.dataset.id));
-        if (product) openDeleteModal(product.name, product.name || "-");
+        const product = freshData.find((item) => String(item.id) === String(btn.dataset.id));
+        if (product) openDeleteModal(product.id, product.name || "-");
       });
     });
   } catch (error) {
@@ -314,8 +295,8 @@ async function loadProducts() {
             <p><strong>${escapeHtml(product.price || "-")}</strong></p>
             <p>${escapeHtml(product.desc || "-")}</p>
             <div class="product-actions">
-              <button class="edit-btn" type="button" data-action="edit" data-id="${escapeHtml(product.name)}">Edit</button>
-              <button class="delete-btn" type="button" data-action="delete" data-id="${escapeHtml(product.name)}">Hapus</button>
+              <button class="edit-btn" type="button" data-action="edit" data-id="${escapeHtml(product.id || "")}">Edit</button>
+              <button class="delete-btn" type="button" data-action="delete" data-id="${escapeHtml(product.id || "")}">Hapus</button>
             </div>
           </article>
         `;
@@ -329,7 +310,7 @@ async function loadProducts() {
 
 async function uploadImage(file) {
   const supabase = await getSupabase();
-  const bucketName = runtimeConfig?.supabaseStorageBucket || "product-images";
+  const bucketName = typeof window.getSupabaseBucket === "function" ? window.getSupabaseBucket() : "product-images";
   const safeName = (file?.name || "image")
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
@@ -391,27 +372,33 @@ async function handleAddProduct() {
     }
 
     const supabase = await getSupabase();
-    const { error } = await supabase.from(PRODUCTS_TABLE).insert({
-      name,
-      price,
-      desc,
-      image
-    });
-    if (error) throw error;
-
-    upsertLocalProduct(
-      {
+    const { data: inserted, error } = await supabase
+      .from(PRODUCTS_TABLE)
+      .insert({
         name,
         price,
+        description: desc,
         category: "Misc",
-        desc,
         is_new: false,
+        image: image || localImage
+      })
+      .select("id, name, price, category, description, is_new, image, created_at")
+      .single();
+    if (error) throw error;
+
+    if (inserted) {
+      upsertLocalProduct({
+        id: inserted.id || "",
+        name: inserted.name || name,
+        price: inserted.price || price,
+        category: inserted.category || "Misc",
+        desc: inserted.description || desc,
+        is_new: Boolean(inserted.is_new),
         color: "#F4A7A7",
-        image: localImage || image,
-        created_at: new Date().toISOString()
-      },
-      name
-    );
+        image: inserted.image || localImage || image,
+        created_at: inserted.created_at || new Date().toISOString()
+      });
+    }
 
     nameInput.value = "";
     priceInput.value = "";
@@ -432,7 +419,7 @@ function openEditModal(product) {
   const modal = document.getElementById("editModal");
   if (!modal) return;
 
-  document.getElementById("editProductId").value = product.name || "";
+  document.getElementById("editProductId").value = product.id || "";
   document.getElementById("editExistingImage").value = product.image || "";
   document.getElementById("editName").value = product.name || "";
   document.getElementById("editPrice").value = product.price || "";
@@ -474,30 +461,32 @@ async function handleSaveEdit() {
     }
 
     const supabase = await getSupabase();
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from(PRODUCTS_TABLE)
       .update({
         name,
         price,
-        desc,
-        image
+        description: desc,
+        image: image || localImage || existingImage
       })
-      .eq("name", id);
+      .eq("id", id)
+      .select("id, name, price, category, description, is_new, image, created_at")
+      .single();
     if (error) throw error;
 
-    upsertLocalProduct(
-      {
-        name,
-        price,
-        category: "Misc",
-        desc,
-        is_new: false,
+    if (updated) {
+      upsertLocalProduct({
+        id: updated.id || id,
+        name: updated.name || name,
+        price: updated.price || price,
+        category: updated.category || "Misc",
+        desc: updated.description || desc,
+        is_new: Boolean(updated.is_new),
         color: "#F4A7A7",
-        image: localImage || image || existingImage,
-        created_at: new Date().toISOString()
-      },
-      id
-    );
+        image: updated.image || localImage || image || existingImage,
+        created_at: updated.created_at || new Date().toISOString()
+      });
+    }
 
     closeModal("editModal");
     showToast("Produk berhasil diperbarui.", "success");
@@ -524,7 +513,7 @@ async function handleConfirmDelete() {
   confirmBtn.disabled = true;
   try {
     const supabase = await getSupabase();
-    const { error } = await supabase.from(PRODUCTS_TABLE).delete().eq("name", pendingDeleteId);
+    const { error } = await supabase.from(PRODUCTS_TABLE).delete().eq("id", pendingDeleteId);
     if (error) throw error;
     removeLocalProduct(pendingDeleteId);
 
