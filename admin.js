@@ -105,9 +105,51 @@ function buildStorageObjectPath(fileName) {
 async function uploadProductImage(file) {
   if (!file) return "";
   const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+
+  const token = data?.session?.access_token;
+  if (!token) {
+    throw new Error("Sesi admin tidak ditemukan. Silakan login ulang.");
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64 = btoa(binary);
+
+  try {
+    const response = await fetch("/api/admin-upload-image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        fileName: file.name || "image",
+        mimeType: file.type || "application/octet-stream",
+        base64
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.message || "Gagal upload gambar ke server.");
+    }
+    if (!payload.publicUrl) {
+      throw new Error("Public URL gambar tidak ditemukan.");
+    }
+    return String(payload.publicUrl).trim();
+  } catch (apiError) {
+    if (!canFallbackToClientWrite(apiError)) {
+      throw apiError;
+    }
+  }
+
   const bucket = String(window.supabaseStorageBucket || "product-images").trim() || "product-images";
   const objectPath = buildStorageObjectPath(file.name);
-
   const { error: uploadError } = await supabase.storage.from(bucket).upload(objectPath, file, {
     cacheControl: "3600",
     upsert: false,
@@ -117,11 +159,13 @@ async function uploadProductImage(file) {
     throw new Error(uploadError.message || "Gagal upload gambar ke storage.");
   }
 
-  const { data } = supabase.storage.from(bucket).getPublicUrl(objectPath);
-  const publicUrl = data?.publicUrl || "";
-  if (!publicUrl) {
-    throw new Error("Public URL gambar tidak ditemukan.");
-  }
+  const publicUrl =
+    `${String(window.supabaseProjectUrl || "").replace(/\/$/, "")}/storage/v1/object/public/${encodeURIComponent(
+      bucket
+    )}/${objectPath
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/")}`;
   return publicUrl;
 }
 

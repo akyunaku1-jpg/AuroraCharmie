@@ -239,14 +239,295 @@ async function handleImageUpload(req, res) {
   }
 }
 
+function readJsonBody(req, maxBytes = MAX_UPLOAD_BYTES * 2) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let totalSize = 0;
+
+    req.on("data", (chunk) => {
+      totalSize += chunk.length;
+      if (totalSize > maxBytes) {
+        reject(new Error("Payload too large."));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on("end", () => {
+      if (chunks.length === 0) {
+        resolve({});
+        return;
+      }
+
+      try {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch (error) {
+        reject(new Error("Invalid JSON body."));
+      }
+    });
+
+    req.on("error", (error) => reject(error));
+  });
+}
+
+function readBearerToken(req) {
+  const raw = String(req.headers.authorization || "");
+  const match = raw.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : "";
+}
+
+async function fetchSupabaseUser(accessToken) {
+  const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+  const anonKey = String(process.env.SUPABASE_ANON_KEY || "").trim();
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    method: "GET",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || "Unauthorized.");
+  }
+  return response.json();
+}
+
+function buildStorageObjectPath(fileName) {
+  const safeName = String(fileName || "image")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const datePrefix = new Date().toISOString().slice(0, 10);
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+  return `${datePrefix}/${Date.now()}-${randomSuffix}-${safeName || "image"}`;
+}
+
+function encodePathSegments(value) {
+  return String(value || "")
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+async function handleAdminProductsApi(req, res) {
+  const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+  const anonKey = String(process.env.SUPABASE_ANON_KEY || "").trim();
+  const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const adminEmail = "admin@cherry.com";
+
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    sendJson(res, 500, { message: "Missing Supabase server environment variables." });
+    return;
+  }
+
+  const accessToken = readBearerToken(req);
+
+  if (req.method === "GET") {
+    let userEmail = "";
+    let isAdmin = false;
+    let authStatus = "missing_token";
+
+    if (accessToken) {
+      try {
+        const user = await fetchSupabaseUser(accessToken);
+        userEmail = String(user?.email || "").toLowerCase();
+        isAdmin = userEmail === adminEmail;
+        authStatus = "ok";
+      } catch (error) {
+        authStatus = "invalid_token";
+      }
+    }
+
+    sendJson(res, 200, {
+      ok: true,
+      env: {
+        hasSupabaseUrl: Boolean(supabaseUrl),
+        hasSupabaseAnonKey: Boolean(anonKey),
+        hasSupabaseServiceRoleKey: Boolean(serviceRoleKey)
+      },
+      auth: {
+        status: authStatus,
+        userEmail: userEmail || null,
+        isAdmin
+      },
+      adminEmail
+    });
+    return;
+  }
+
+  if (req.method !== "POST") {
+    sendJson(res, 405, { message: "Method not allowed." });
+    return;
+  }
+
+  if (!accessToken) {
+    sendJson(res, 401, { message: "Missing access token." });
+    return;
+  }
+
+  try {
+    const user = await fetchSupabaseUser(accessToken);
+    const email = String(user?.email || "").toLowerCase();
+    if (email !== adminEmail) {
+      sendJson(res, 403, { message: "Only admin can modify products." });
+      return;
+    }
+
+    const payload = await readJsonBody(req);
+    const action = String(payload.action || "").toLowerCase();
+    const headers = {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    };
+
+    let response;
+    if (action === "insert") {
+      response = await fetch(`${supabaseUrl}/rest/v1/products`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify([payload.product || {}])
+      });
+    } else if (action === "update") {
+      const lookupName = String(payload.lookupName || "").trim();
+      if (!lookupName) {
+        sendJson(res, 400, { message: "lookupName is required for update." });
+        return;
+      }
+      response = await fetch(`${supabaseUrl}/rest/v1/products?name=eq.${encodeURIComponent(lookupName)}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(payload.product || {})
+      });
+    } else if (action === "delete") {
+      const lookupName = String(payload.lookupName || "").trim();
+      if (!lookupName) {
+        sendJson(res, 400, { message: "lookupName is required for delete." });
+        return;
+      }
+      response = await fetch(`${supabaseUrl}/rest/v1/products?name=eq.${encodeURIComponent(lookupName)}`, {
+        method: "DELETE",
+        headers
+      });
+    } else {
+      sendJson(res, 400, { message: "Unsupported action." });
+      return;
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = Array.isArray(data) ? data[0]?.message : data?.message;
+      sendJson(res, response.status, { message: message || "Failed to write products." });
+      return;
+    }
+
+    sendJson(res, 200, { success: true, data });
+  } catch (error) {
+    sendJson(res, 500, { message: error.message || "Admin product operation failed." });
+  }
+}
+
+async function handleAdminUploadImageApi(req, res) {
+  if (req.method !== "POST") {
+    sendJson(res, 405, { message: "Method not allowed." });
+    return;
+  }
+
+  const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+  const anonKey = String(process.env.SUPABASE_ANON_KEY || "").trim();
+  const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  const bucket = String(process.env.SUPABASE_STORAGE_BUCKET || "product-images").trim() || "product-images";
+  const adminEmail = "admin@cherry.com";
+
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    sendJson(res, 500, { message: "Missing Supabase server environment variables." });
+    return;
+  }
+
+  const accessToken = readBearerToken(req);
+  if (!accessToken) {
+    sendJson(res, 401, { message: "Missing access token." });
+    return;
+  }
+
+  try {
+    const user = await fetchSupabaseUser(accessToken);
+    const email = String(user?.email || "").toLowerCase();
+    if (email !== adminEmail) {
+      sendJson(res, 403, { message: "Only admin can upload images." });
+      return;
+    }
+
+    const payload = await readJsonBody(req);
+    const base64 = String(payload.base64 || "");
+    const fileName = String(payload.fileName || "image");
+    const mimeType = String(payload.mimeType || "application/octet-stream");
+    if (!base64) {
+      sendJson(res, 400, { message: "Image payload is empty." });
+      return;
+    }
+
+    const bytes = Buffer.from(base64, "base64");
+    const objectPath = buildStorageObjectPath(fileName);
+    const uploadResponse = await fetch(
+      `${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${encodePathSegments(objectPath)}`,
+      {
+        method: "POST",
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": mimeType,
+          "x-upsert": "false"
+        },
+        body: bytes
+      }
+    );
+
+    const uploadPayload = await uploadResponse.json().catch(() => ({}));
+    if (!uploadResponse.ok) {
+      const message = uploadPayload?.message || "Failed to upload image.";
+      sendJson(res, uploadResponse.status, { message });
+      return;
+    }
+
+    const publicUrl = `${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/public/${encodeURIComponent(
+      bucket
+    )}/${encodePathSegments(objectPath)}`;
+    sendJson(res, 200, {
+      success: true,
+      path: objectPath,
+      publicUrl
+    });
+  } catch (error) {
+    sendJson(res, 500, { message: error.message || "Image upload failed." });
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const requestPath = req.url.split("?")[0];
 
   if (requestPath === "/api/config") {
     sendJson(res, 200, {
       supabaseUrl: process.env.SUPABASE_URL || "",
-      supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ""
+      supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "",
+      supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET || "product-images"
     });
+    return;
+  }
+
+  if (requestPath === "/api/admin-products") {
+    await handleAdminProductsApi(req, res);
+    return;
+  }
+
+  if (requestPath === "/api/admin-upload-image") {
+    await handleAdminUploadImageApi(req, res);
     return;
   }
 
