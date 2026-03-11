@@ -125,6 +125,47 @@ async function uploadProductImage(file) {
   return publicUrl;
 }
 
+async function callAdminProductsApi(payload) {
+  const supabase = await getSupabaseClient();
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+
+  const token = data?.session?.access_token;
+  if (!token) {
+    throw new Error("Sesi admin tidak ditemukan. Silakan login ulang.");
+  }
+
+  const response = await fetch("/api/admin-products", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const payloadJson = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payloadJson.message || "Aksi admin gagal diproses.");
+  }
+
+  return payloadJson;
+}
+
+function canFallbackToClientWrite(error) {
+  const hostname = String(window.location.hostname || "").toLowerCase();
+  if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+    return false;
+  }
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("404") ||
+    message.includes("not found") ||
+    message.includes("unexpected token")
+  );
+}
+
 async function initLoginPage() {
   clearAuthMessages();
   const emailInput = document.getElementById("emailInput");
@@ -302,7 +343,6 @@ async function handleAddProduct() {
       image = await uploadProductImage(file);
     }
 
-    const supabase = await getSupabaseClient();
     const productObject = {
       name,
       price,
@@ -311,9 +351,25 @@ async function handleAddProduct() {
       is_new: false,
       image
     };
+    let writeCompleted = false;
 
-    const { error } = await supabase.from(PRODUCTS_TABLE).insert([productObject]);
-    if (error) throw error;
+    try {
+      await callAdminProductsApi({
+        action: "insert",
+        product: productObject
+      });
+      writeCompleted = true;
+    } catch (apiError) {
+      if (!canFallbackToClientWrite(apiError)) {
+        throw apiError;
+      }
+    }
+
+    if (!writeCompleted) {
+      const supabase = await getSupabaseClient();
+      const { error } = await supabase.from(PRODUCTS_TABLE).insert([productObject]);
+      if (error) throw error;
+    }
 
     nameInput.value = "";
     priceInput.value = "";
@@ -372,18 +428,34 @@ async function handleSaveEdit() {
       image = await uploadProductImage(file);
     }
 
-    const supabase = await getSupabaseClient();
     const productObject = {
       name,
       price,
       desc,
       image
     };
+    let writeCompleted = false;
 
-    let query = supabase.from(PRODUCTS_TABLE).update(productObject);
-    query = productId ? query.eq("id", productId) : query.eq("name", lookupName);
-    const { error } = await query;
-    if (error) throw error;
+    try {
+      await callAdminProductsApi({
+        action: "update",
+        lookupName,
+        product: productObject
+      });
+      writeCompleted = true;
+    } catch (apiError) {
+      if (!canFallbackToClientWrite(apiError)) {
+        throw apiError;
+      }
+    }
+
+    if (!writeCompleted) {
+      const supabase = await getSupabaseClient();
+      let query = supabase.from(PRODUCTS_TABLE).update(productObject);
+      query = productId ? query.eq("id", productId) : query.eq("name", lookupName);
+      const { error } = await query;
+      if (error) throw error;
+    }
 
     closeModal("editModal");
     showToast("Produk berhasil diperbarui.", "success");
@@ -414,11 +486,27 @@ async function handleConfirmDelete() {
 
   confirmBtn.disabled = true;
   try {
-    const supabase = await getSupabaseClient();
-    let query = supabase.from(PRODUCTS_TABLE).delete();
-    query = pendingDeleteId ? query.eq("id", pendingDeleteId) : query.eq("name", lookupName);
-    const { error } = await query;
-    if (error) throw error;
+    let writeCompleted = false;
+
+    try {
+      await callAdminProductsApi({
+        action: "delete",
+        lookupName
+      });
+      writeCompleted = true;
+    } catch (apiError) {
+      if (!canFallbackToClientWrite(apiError)) {
+        throw apiError;
+      }
+    }
+
+    if (!writeCompleted) {
+      const supabase = await getSupabaseClient();
+      let query = supabase.from(PRODUCTS_TABLE).delete();
+      query = pendingDeleteId ? query.eq("id", pendingDeleteId) : query.eq("name", lookupName);
+      const { error } = await query;
+      if (error) throw error;
+    }
 
     closeModal("deleteModal");
     showToast("Produk berhasil dihapus.", "success");
