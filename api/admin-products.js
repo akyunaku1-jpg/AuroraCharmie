@@ -82,15 +82,49 @@ async function performProductsWrite(supabaseUrl, serviceRoleKey, action, payload
 }
 
 module.exports = async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.status(405).json({ message: "Method not allowed." });
-    return;
-  }
-
   const supabaseUrl = getEnv("SUPABASE_URL");
   const anonKey = getEnv("SUPABASE_ANON_KEY");
   const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
   const adminEmail = "admin@cherry.com";
+
+  if (req.method === "GET") {
+    const accessToken = readBearerToken(req);
+    let userEmail = "";
+    let isAdmin = false;
+    let authStatus = "missing_token";
+
+    if (supabaseUrl && anonKey && accessToken) {
+      try {
+        const user = await fetchUserProfile(supabaseUrl, anonKey, accessToken);
+        userEmail = String(user?.email || "").toLowerCase();
+        isAdmin = userEmail === adminEmail;
+        authStatus = "ok";
+      } catch (error) {
+        authStatus = "invalid_token";
+      }
+    }
+
+    res.status(200).json({
+      ok: Boolean(supabaseUrl && anonKey && serviceRoleKey),
+      env: {
+        hasSupabaseUrl: Boolean(supabaseUrl),
+        hasSupabaseAnonKey: Boolean(anonKey),
+        hasSupabaseServiceRoleKey: Boolean(serviceRoleKey)
+      },
+      auth: {
+        status: authStatus,
+        userEmail: userEmail || null,
+        isAdmin
+      },
+      adminEmail
+    });
+    return;
+  }
+
+  if (req.method !== "POST") {
+    res.status(405).json({ message: "Method not allowed." });
+    return;
+  }
 
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     res.status(500).json({ message: "Missing Supabase server environment variables." });
