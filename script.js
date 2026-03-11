@@ -122,9 +122,37 @@ function normalizeImagePath(imagePath) {
   if (raw.startsWith("data:")) {
     return raw;
   }
+  const bucket = String(window.supabaseStorageBucket || "product-images").trim() || "product-images";
+  const projectUrl = String(window.supabaseProjectUrl || "").trim();
+
+  if (projectUrl && !/^https?:\/\//i.test(raw)) {
+    const objectPath = raw
+      .replace(/^\/?storage\/v1\/object\/public\/[^/]+\//i, "")
+      .replace(/^\/?public\/product-images\//i, "")
+      .replace(/^\.?\//, "");
+    if (objectPath) {
+      return `${projectUrl.replace(/\/$/, "")}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath
+        .split("/")
+        .map((part) => encodeURIComponent(part))
+        .join("/")}`;
+    }
+  }
+
   try {
     const parsed = new URL(raw, window.location.origin);
     if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+      if (projectUrl && parsed.pathname) {
+        const objectPath = parsed.pathname
+          .replace(/^\/?public\/product-images\//i, "")
+          .replace(/^\/?storage\/v1\/object\/public\/[^/]+\//i, "")
+          .replace(/^\.?\//, "");
+        if (objectPath) {
+          return `${projectUrl.replace(/\/$/, "")}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath
+            .split("/")
+            .map((part) => encodeURIComponent(part))
+            .join("/")}`;
+        }
+      }
       return parsed.pathname;
     }
     return parsed.href;
@@ -190,7 +218,7 @@ async function loadProducts() {
     let data = [];
     const primaryResult = await supabase
       .from(PRODUCTS_TABLE)
-      .select("id,name,price,category,desc,is_new,color,image,created_at")
+      .select("name,price,category,desc,is_new,color,image,created_at")
       .order("created_at", { ascending: false });
     if (primaryResult.error) throw primaryResult.error;
     data = primaryResult.data || [];
@@ -198,6 +226,7 @@ async function loadProducts() {
     products = Array.isArray(data) ? data.map(normalizeProduct) : [];
     writeLocalProducts(products);
   } catch (error) {
+    console.error("Catalog failed to load products from Supabase.", error);
     const localProductsData = readLocalProducts();
     products = localProductsData.length > 0 ? localProductsData.map(normalizeProduct) : [...localProducts];
   }

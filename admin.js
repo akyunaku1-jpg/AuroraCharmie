@@ -35,9 +35,37 @@ function getProductDescription(product) {
 function getProductImagePath(product) {
   const raw = String(product?.image ?? "").trim();
   if (!raw) return "";
+  const bucket = String(window.supabaseStorageBucket || "product-images").trim() || "product-images";
+  const projectUrl = String(window.supabaseProjectUrl || "").trim();
+
+  if (projectUrl && !/^https?:\/\//i.test(raw)) {
+    const objectPath = raw
+      .replace(/^\/?storage\/v1\/object\/public\/[^/]+\//i, "")
+      .replace(/^\/?public\/product-images\//i, "")
+      .replace(/^\.?\//, "");
+    if (objectPath) {
+      return `${projectUrl.replace(/\/$/, "")}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath
+        .split("/")
+        .map((part) => encodeURIComponent(part))
+        .join("/")}`;
+    }
+  }
+
   try {
     const parsed = new URL(raw, window.location.origin);
     if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+      if (projectUrl && parsed.pathname) {
+        const objectPath = parsed.pathname
+          .replace(/^\/?public\/product-images\//i, "")
+          .replace(/^\/?storage\/v1\/object\/public\/[^/]+\//i, "")
+          .replace(/^\.?\//, "");
+        if (objectPath) {
+          return `${projectUrl.replace(/\/$/, "")}/storage/v1/object/public/${encodeURIComponent(bucket)}/${objectPath
+            .split("/")
+            .map((part) => encodeURIComponent(part))
+            .join("/")}`;
+        }
+      }
       return parsed.pathname;
     }
     return parsed.href;

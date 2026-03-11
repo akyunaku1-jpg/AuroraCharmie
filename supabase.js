@@ -37,6 +37,7 @@
       }
 
       window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+      window.supabaseProjectUrl = supabaseUrl;
       window.supabaseStorageBucket = supabaseStorageBucket || "product-images";
     } catch (error) {
       window.supabaseInitError = error;
