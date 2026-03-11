@@ -1,5 +1,48 @@
-const SUPABASE_URL = "https://ytdzvybgvxbbxttpgaho.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0ZHp2eWJndnhiYnh0dHBnYWhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0OTE5NTAsImV4cCI6MjA4ODA2Nzk1MH0.xoQjf8CIGHEmFlKrfhsjulrfRS7U2wrjTDXFpooYTvc";
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+(function () {
+  const MAX_ATTEMPTS = 30;
+  const RETRY_DELAY_MS = 100;
 
-window.supabaseClient = supabaseClient;
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function waitForSupabaseLibrary() {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      if (window.supabase && typeof window.supabase.createClient === "function") {
+        return;
+      }
+      await sleep(RETRY_DELAY_MS);
+    }
+    throw new Error("Supabase JS library is not loaded.");
+  }
+
+  async function loadRuntimeConfig() {
+    const response = await fetch("/api/config", { method: "GET", cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("Failed to fetch runtime config.");
+    }
+    return response.json();
+  }
+
+  async function initSupabase() {
+    try {
+      await waitForSupabaseLibrary();
+      const config = await loadRuntimeConfig();
+      const supabaseUrl = String(config?.supabaseUrl || "").trim();
+      const supabaseAnonKey = String(config?.supabaseAnonKey || "").trim();
+      const supabaseStorageBucket = String(config?.supabaseStorageBucket || "product-images").trim();
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error("SUPABASE_URL or SUPABASE_ANON_KEY is missing.");
+      }
+
+      window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+      window.supabaseStorageBucket = supabaseStorageBucket || "product-images";
+    } catch (error) {
+      window.supabaseInitError = error;
+      console.error("Supabase initialization failed.", error);
+    }
+  }
+
+  initSupabase();
+})();

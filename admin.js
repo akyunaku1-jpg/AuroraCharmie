@@ -2,11 +2,15 @@ const PRODUCTS_TABLE = "products";
 
 let pendingDeleteId = null;
 
-function getSupabaseClient() {
-  if (!window.supabaseClient) {
-    throw new Error("Supabase client is not initialized.");
+async function getSupabaseClient(maxAttempts = 30, delayMs = 100) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (window.supabaseClient) {
+      return window.supabaseClient;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
-  return window.supabaseClient;
+  const reason = window.supabaseInitError?.message || "Supabase client is not initialized.";
+  throw new Error(reason);
 }
 
 function showBox(element, message) {
@@ -22,6 +26,24 @@ function showBox(element, message) {
 function clearAuthMessages() {
   showBox(document.getElementById("errorBox"), "");
   showBox(document.getElementById("successBox"), "");
+}
+
+function getProductDescription(product) {
+  return product?.desc ?? "";
+}
+
+function getProductImagePath(product) {
+  const raw = String(product?.image ?? "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+      return parsed.pathname;
+    }
+    return parsed.href;
+  } catch (error) {
+    return raw.startsWith("/") ? raw : `/${raw.replace(/^\.?\//, "")}`;
+  }
 }
 
 function showToast(message, type = "info") {
@@ -41,13 +63,38 @@ function showToast(message, type = "info") {
   }, 3000);
 }
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
-    reader.onerror = () => reject(new Error("Gagal membaca file gambar."));
-    reader.readAsDataURL(file);
+function buildStorageObjectPath(fileName) {
+  const safeName = String(fileName || "image")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const datePrefix = new Date().toISOString().slice(0, 10);
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+  return `${datePrefix}/${Date.now()}-${randomSuffix}-${safeName || "image"}`;
+}
+
+async function uploadProductImage(file) {
+  if (!file) return "";
+  const supabase = await getSupabaseClient();
+  const bucket = String(window.supabaseStorageBucket || "product-images").trim() || "product-images";
+  const objectPath = buildStorageObjectPath(file.name);
+
+  const { error: uploadError } = await supabase.storage.from(bucket).upload(objectPath, file, {
+    cacheControl: "3600",
+    upsert: false,
+    contentType: file.type || "application/octet-stream"
   });
+  if (uploadError) {
+    throw new Error(uploadError.message || "Gagal upload gambar ke storage.");
+  }
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(objectPath);
+  const publicUrl = data?.publicUrl || "";
+  if (!publicUrl) {
+    throw new Error("Public URL gambar tidak ditemukan.");
+  }
+  return publicUrl;
 }
 
 async function initLoginPage() {
@@ -59,7 +106,7 @@ async function initLoginPage() {
   if (!emailInput || !passwordInput || !loginBtn || !errorBox) return;
 
   try {
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
     if (data?.session) {
@@ -81,7 +128,7 @@ async function initLoginPage() {
         throw new Error("Email dan password wajib diisi.");
       }
 
-      const supabase = getSupabaseClient();
+      const supabase = await getSupabaseClient();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       window.location.replace("/admin-dashboard");
@@ -118,7 +165,7 @@ async function initRegisterPage() {
         throw new Error("Password dan konfirmasi password tidak sama.");
       }
 
-      const supabase = getSupabaseClient();
+      const supabase = await getSupabaseClient();
       const { error } = await supabase.auth.signUp({ email, password });
       if (error) throw error;
 
@@ -139,7 +186,7 @@ async function loadProducts() {
   if (!grid) return;
 
   try {
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     const { data, error } = await supabase.from(PRODUCTS_TABLE).select("*").order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -150,16 +197,19 @@ async function loadProducts() {
 
     grid.innerHTML = data
       .map((product) => {
-        const imagePath = product.image || "";
+        const imagePath = getProductImagePath(product);
+        const description = getProductDescription(product);
+        const productId = product.id || "";
+        const productName = product.name || "";
         return `
           <article class="product-item">
             <img src="${escapeHtml(imagePath)}" alt="${escapeHtml(product.name || "Product")}" />
             <h4>${escapeHtml(product.name || "-")}</h4>
             <p><strong>${escapeHtml(product.price || "-")}</strong></p>
-            <p>${escapeHtml(product.description || "-")}</p>
+            <p>${escapeHtml(description || "-")}</p>
             <div class="product-actions">
-              <button class="edit-btn" type="button" data-action="edit" data-id="${escapeHtml(product.id)}">Edit</button>
-              <button class="delete-btn" type="button" data-action="delete" data-id="${escapeHtml(product.id)}">Hapus</button>
+              <button class="edit-btn" type="button" data-action="edit" data-id="${escapeHtml(productId)}" data-name="${escapeHtml(productName)}">Edit</button>
+              <button class="delete-btn" type="button" data-action="delete" data-id="${escapeHtml(productId)}" data-name="${escapeHtml(productName)}">Hapus</button>
             </div>
           </article>
         `;
@@ -168,15 +218,27 @@ async function loadProducts() {
 
     grid.querySelectorAll("[data-action='edit']").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const product = data.find((item) => String(item.id) === String(btn.dataset.id));
+        const product = data.find((item) => {
+          const itemId = String(item.id || "");
+          const itemName = String(item.name || "");
+          const btnId = String(btn.dataset.id || "");
+          const btnName = String(btn.dataset.name || "");
+          return (btnId && itemId === btnId) || itemName === btnName;
+        });
         if (product) openEditModal(product);
       });
     });
 
     grid.querySelectorAll("[data-action='delete']").forEach((btn) => {
       btn.addEventListener("click", () => {
-        const product = data.find((item) => String(item.id) === String(btn.dataset.id));
-        if (product) openDeleteModal(product.id, product.name || "-");
+        const product = data.find((item) => {
+          const itemId = String(item.id || "");
+          const itemName = String(item.name || "");
+          const btnId = String(btn.dataset.id || "");
+          const btnName = String(btn.dataset.name || "");
+          return (btnId && itemId === btnId) || itemName === btnName;
+        });
+        if (product) openDeleteModal(product.id || "", product.name || "-");
       });
     });
   } catch (error) {
@@ -201,22 +263,22 @@ async function handleAddProduct() {
   try {
     const name = nameInput.value.trim();
     const price = priceInput.value.trim();
-    const description = descInput.value.trim();
-    if (!name || !price || !description) {
+    const desc = descInput.value.trim();
+    if (!name || !price || !desc) {
       throw new Error("Nama, harga, dan deskripsi wajib diisi.");
     }
 
     let image = "";
     const file = imageInput.files?.[0];
     if (file) {
-      image = await fileToDataUrl(file);
+      image = await uploadProductImage(file);
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     const productObject = {
       name,
       price,
-      description,
+      desc,
       category: "Misc",
       is_new: false,
       image
@@ -245,49 +307,54 @@ function openEditModal(product) {
   if (!modal) return;
 
   document.getElementById("editProductId").value = product.id || "";
-  document.getElementById("editExistingImage").value = product.image || "";
+  document.getElementById("editExistingImage").value = getProductImagePath(product);
   document.getElementById("editName").value = product.name || "";
   document.getElementById("editPrice").value = product.price || "";
-  document.getElementById("editDesc").value = product.description || "";
+  document.getElementById("editDesc").value = getProductDescription(product);
   document.getElementById("editImage").value = "";
+  modal.dataset.lookupName = product.name || "";
   showBox(document.getElementById("editErrorBox"), "");
   modal.classList.add("active");
 }
 
 async function handleSaveEdit() {
-  const productId = document.getElementById("editProductId")?.value;
+  const productId = document.getElementById("editProductId")?.value || "";
+  const editModal = document.getElementById("editModal");
+  const lookupName = editModal?.dataset.lookupName || "";
   const existingImage = document.getElementById("editExistingImage")?.value || "";
   const name = document.getElementById("editName")?.value.trim() || "";
   const price = document.getElementById("editPrice")?.value.trim() || "";
-  const description = document.getElementById("editDesc")?.value.trim() || "";
+  const desc = document.getElementById("editDesc")?.value.trim() || "";
   const imageInput = document.getElementById("editImage");
   const errorBox = document.getElementById("editErrorBox");
   const saveBtn = document.getElementById("saveEditBtn");
-  if (!productId || !imageInput || !errorBox || !saveBtn) return;
+  if ((!productId && !lookupName) || !imageInput || !errorBox || !saveBtn) return;
 
   showBox(errorBox, "");
   saveBtn.disabled = true;
 
   try {
-    if (!name || !price || !description) {
+    if (!name || !price || !desc) {
       throw new Error("Nama, harga, dan deskripsi wajib diisi.");
     }
 
     let image = existingImage;
     const file = imageInput.files?.[0];
     if (file) {
-      image = await fileToDataUrl(file);
+      image = await uploadProductImage(file);
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     const productObject = {
       name,
       price,
-      description,
+      desc,
       image
     };
 
-    const { error } = await supabase.from(PRODUCTS_TABLE).update(productObject).eq("id", productId);
+    let query = supabase.from(PRODUCTS_TABLE).update(productObject);
+    query = productId ? query.eq("id", productId) : query.eq("name", lookupName);
+    const { error } = await query;
     if (error) throw error;
 
     closeModal("editModal");
@@ -301,21 +368,28 @@ async function handleSaveEdit() {
 }
 
 function openDeleteModal(id, name) {
-  pendingDeleteId = id;
+  pendingDeleteId = id || "";
   const deleteName = document.getElementById("deleteProductName");
   const modal = document.getElementById("deleteModal");
   if (deleteName) deleteName.textContent = name || "-";
-  if (modal) modal.classList.add("active");
+  if (modal) {
+    modal.dataset.lookupName = name || "";
+    modal.classList.add("active");
+  }
 }
 
 async function handleConfirmDelete() {
+  const deleteModal = document.getElementById("deleteModal");
+  const lookupName = deleteModal?.dataset.lookupName || "";
   const confirmBtn = document.getElementById("confirmDeleteBtn");
-  if (!pendingDeleteId || !confirmBtn) return;
+  if ((!pendingDeleteId && !lookupName) || !confirmBtn) return;
 
   confirmBtn.disabled = true;
   try {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from(PRODUCTS_TABLE).delete().eq("id", pendingDeleteId);
+    const supabase = await getSupabaseClient();
+    let query = supabase.from(PRODUCTS_TABLE).delete();
+    query = pendingDeleteId ? query.eq("id", pendingDeleteId) : query.eq("name", lookupName);
+    const { error } = await query;
     if (error) throw error;
 
     closeModal("deleteModal");
@@ -331,7 +405,11 @@ async function handleConfirmDelete() {
 
 function closeModal(modalId) {
   const modal = document.getElementById(modalId);
-  if (modal) modal.classList.remove("active");
+  if (!modal) return;
+  modal.classList.remove("active");
+  if (modalId === "editModal" || modalId === "deleteModal") {
+    modal.dataset.lookupName = "";
+  }
 }
 
 function escapeHtml(value) {
@@ -352,7 +430,7 @@ async function initDashboardPage() {
   const cancelDeleteBtn = document.getElementById("cancelDeleteBtn");
 
   try {
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
     if (!data?.session) {
@@ -368,7 +446,8 @@ async function initDashboardPage() {
   if (logoutBtn) {
     logoutBtn.addEventListener("click", async () => {
       try {
-        await getSupabaseClient().auth.signOut();
+        const supabase = await getSupabaseClient();
+        await supabase.auth.signOut();
       } finally {
         window.location.replace("/admin-login");
       }

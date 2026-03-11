@@ -4,6 +4,7 @@
   "description": "Single-page handmade bracelet catalog website",
   "main": "server.js",
   "scripts": {
+    "dev": "node --watch server.js",
     "start": "node server.js",
     "build": "node -e \"console.log('No build step required for static files')\""
   },

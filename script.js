@@ -114,9 +114,31 @@ function parseBadgeFromDescription(rawDescription) {
 const CARD_SWITCH_DURATION_MS = 300;
 const MIN_SKELETON_CARDS = 4;
 
+function normalizeImagePath(imagePath) {
+  const raw = typeof imagePath === "string" ? imagePath.trim() : "";
+  if (!raw) {
+    return "";
+  }
+  if (raw.startsWith("data:")) {
+    return raw;
+  }
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+      return parsed.pathname;
+    }
+    return parsed.href;
+  } catch (error) {
+    if (raw.startsWith("/")) {
+      return raw;
+    }
+    return `/${raw.replace(/^\.?\//, "")}`;
+  }
+}
+
 function normalizeProduct(product) {
-  const parsedDescription = parseBadgeFromDescription(product?.description || product?.desc || "");
-  const imagePath = product?.image_path || product?.image || product?.images || "";
+  const parsedDescription = parseBadgeFromDescription(product?.desc || "");
+  const imagePath = normalizeImagePath(product?.image || "");
   const defaultBadge = product?.is_new ?? product?.isNew ? "NEW" : "";
 
   return {
@@ -151,10 +173,14 @@ function writeLocalProducts(items) {
 }
 
 async function getSupabaseClient() {
-  if (!window.supabaseClient) {
-    throw new Error("Supabase client is missing.");
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (window.supabaseClient) {
+      return window.supabaseClient;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  return window.supabaseClient;
+  const reason = window.supabaseInitError?.message || "Supabase client is missing.";
+  throw new Error(reason);
 }
 
 async function loadProducts() {
@@ -164,23 +190,10 @@ async function loadProducts() {
     let data = [];
     const primaryResult = await supabase
       .from(PRODUCTS_TABLE)
-      .select("id,name,price,category,description,is_new,color,image,created_at")
+      .select("id,name,price,category,desc,is_new,color,image,created_at")
       .order("created_at", { ascending: false });
-
-    if (!primaryResult.error) {
-      data = primaryResult.data || [];
-    } else {
-      const fallbackResult = await supabase
-        .from(PRODUCTS_TABLE)
-        .select("id,name,price,category,desc,is_new,color,image,images,created_at")
-        .order("created_at", { ascending: false });
-
-      if (fallbackResult.error) {
-        throw fallbackResult.error;
-      }
-
-      data = fallbackResult.data || [];
-    }
+    if (primaryResult.error) throw primaryResult.error;
+    data = primaryResult.data || [];
 
     products = Array.isArray(data) ? data.map(normalizeProduct) : [];
     writeLocalProducts(products);

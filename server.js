@@ -35,6 +35,7 @@ const STATIC_ROUTES = {
   "/admin-register": "admin-register.html",
   "/admin-dashboard": "admin-dashboard.html",
   "/admin.js": "admin.js",
+  "/supabase.js": "supabase.js",
   "/admin.css": "admin.css"
 };
 
